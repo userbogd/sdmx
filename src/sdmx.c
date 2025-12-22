@@ -34,23 +34,11 @@
 
 #define TAG "sDMX driver"
 
-void dmx_service_timer_callback(void *arg)
-{
-  sdmx_handle_t *dmx;
-  dmx = (sdmx_handle_t *)arg;
-
-  // dmx->rx_cntr = 0;
-  // dmx->state = DMX_IDLE;
-  // uart_flush_input(dmx->cfg.uart);
-  // xQueueReset(dmx->dmx_rx_queue);
-  ESP_LOGW(TAG, "Packet receive watchdog reset state %d", dmx->state);
-}
-
 IRAM_ATTR static void uart_tx_task(void *arg)
 {
   sdmx_handle_t *dmx;
   dmx = (sdmx_handle_t *)arg;
-
+  uint8_t start_byte = DMX_START_BYTE;
   while (1)
     {
       vTaskDelay(pdMS_TO_TICKS(DMX_PACKET_RATE));
@@ -60,73 +48,81 @@ IRAM_ATTR static void uart_tx_task(void *arg)
       uart_set_line_inverse(dmx->cfg.uart, 0);
       esp_rom_delay_us(DMX_MAB_US);
       xSemaphoreTake(dmx->sync_dmx, portMAX_DELAY);
-      dmx->data[0] = DMX_START_BYTE;
-      uart_write_bytes(dmx->cfg.uart, (const char *)dmx->data, 513);
+      uart_write_bytes(dmx->cfg.uart, (const char *)&start_byte, 1);
+      uart_write_bytes(dmx->cfg.uart, (const char *)dmx->data, DMX_PACKET_SIZE);
       xSemaphoreGive(dmx->sync_dmx);
     }
 }
 
-static void on_packet_received(sdmx_handle_t *dmx)
+IRAM_ATTR static void on_packet_received(sdmx_handle_t *dmx)
 {
-  ESP_LOGI(TAG, "PACKET OK at %d", (int)dmx->last_dmx_packet);
+  ESP_LOGI(TAG, "PACKET %02X%02X%02X-%02X OK at %d", dmx->data[0], dmx->data[1],
+      dmx->data[2], dmx->data[511], (int)dmx->last_dmx_packet);
   return;
-  dmx->last_dmx_packet = xTaskGetTickCount();
+  xSemaphoreTake(dmx->sync_dmx, portMAX_DELAY);
+  // for (int i = 0; i < 5; i++)
+  //   printf("%02X", dmx->data[i]);
+  printf("%02X%02X%02X-%02X", dmx->data[0], dmx->data[1], dmx->data[2], dmx->data[511]);
   xSemaphoreGive(dmx->sync_dmx);
-  for (int i = 0; i < DMX_PACKET_SIZE; i++)
-    printf("%02X", *(dmx->data + i));
   printf("\r\n");
-  xSemaphoreGive(dmx->sync_dmx);
+  return;
 }
 
-void uart_rx_task(void *arg)
+IRAM_ATTR void uart_rx_task(void *arg)
 {
   sdmx_handle_t *dmx;
   dmx = (sdmx_handle_t *)arg;
+  int rxoffset = 0;
 
   uart_event_t event;
-  uint8_t *temp = (uint8_t *)malloc(dmx->cfg.circ_buff_size);
+  uint8_t *tmp1 = (uint8_t *)malloc(dmx->cfg.circ_buff_size);
+  uint8_t *tmp2 = (uint8_t *)malloc(DMX_PACKET_SIZE + 2);
   while (1)
     {
       if (xQueueReceive(dmx->dmx_rx_queue, (void *)&event, portMAX_DELAY))
         {
-          bzero(temp, dmx->cfg.circ_buff_size);
-          uart_read_bytes(dmx->cfg.uart, temp, event.size, pdMS_TO_TICKS(1000));
-          int it = 0;
+          bzero(tmp1, dmx->cfg.circ_buff_size);
           switch (event.type)
             {
-              case UART_BREAK:
-                dmx->state = DMX_BREAK;
-                dmx->rx_cntr = 0;
-                it = 1; // for skip brake byte
+              case UART_DATA:
+                uart_read_bytes(dmx->cfg.uart, tmp1, event.size, portMAX_DELAY);
+                if (dmx->state == DMX_BREAK)
+                  {
+                    xSemaphoreTake(dmx->sync_dmx, portMAX_DELAY);
+                    memcpy(dmx->data, &tmp2[2], sizeof(dmx->data));
+                    xSemaphoreGive(dmx->sync_dmx);
+                    on_packet_received(dmx);
+                    if (tmp1[1] == 0)
+                      {
+                        dmx->state = DMX_DATA;
+                        rxoffset = 0;
+                        dmx->last_dmx_packet = xTaskGetTickCount();
+                      }
+                  }
+                if (dmx->state == DMX_DATA)
+                  {
+                    for (int i = 0; i < event.size; i++)
+                      {
+                        if (rxoffset < DMX_PACKET_SIZE + 2)
+                          tmp2[rxoffset++] = tmp1[i];
+                      }
+                  }
 
                 break;
-              case UART_DATA:
-                dmx->state = DMX_DATA;
-                it = 0;
+              case UART_BREAK:
+                dmx->state = DMX_BREAK;
                 break;
+
               case UART_FRAME_ERR:
               case UART_PARITY_ERR:
               case UART_BUFFER_FULL:
               case UART_FIFO_OVF:
               default:
-                // error recevied, going to idle mode
                 dmx->state = DMX_IDLE;
                 uart_flush_input(dmx->cfg.uart);
                 xQueueReset(dmx->dmx_rx_queue);
                 ESP_LOGW(TAG, "FRAME ERROR DETECTED");
                 break;
-            }
-          xSemaphoreTake(dmx->sync_dmx, portMAX_DELAY);
-          for (int i = it; i < event.size && dmx->rx_cntr < DMX_PACKET_SIZE; i++)
-            dmx->data[dmx->rx_cntr++] = temp[i];
-          xSemaphoreGive(dmx->sync_dmx);
-          if (dmx->rx_cntr >= DMX_PACKET_SIZE)
-            {
-              dmx->state = DMX_IDLE;
-              dmx->rx_cntr = 0;
-              uart_flush_input(dmx->cfg.uart);
-              xQueueReset(dmx->dmx_rx_queue);
-              on_packet_received(dmx);
             }
         }
     }
@@ -157,17 +153,13 @@ esp_err_t InitDMXchannel(sdmx_handle_t *dmx, sdmx_config_t *cfg)
   if (cfg->dmx_direction == output)
     {
       gpio_set_level(cfg->dc_pin, 1);
-      xTaskCreatePinnedToCore(uart_tx_task, "uart_tx_task", 4 * 1024, dmx, 24, NULL,
+      xTaskCreatePinnedToCore(uart_tx_task, "uart_tx_task", 4 * 1024, dmx, 8, NULL,
           cfg->coreID);
     }
   else
     {
-      esp_timer_create_args_t dmx_service_timer_args
-          = { .callback = &dmx_service_timer_callback, .name = "dmxTimer", .arg = dmx };
-      ESP_ERROR_CHECK(esp_timer_create(&dmx_service_timer_args, &dmx->tmr));
-      esp_timer_start_periodic(dmx->tmr, 10000);
       gpio_set_level(cfg->dc_pin, 0);
-      xTaskCreatePinnedToCore(uart_rx_task, "uart_rx_task", 4 * 1024, dmx, 24, NULL,
+      xTaskCreatePinnedToCore(uart_rx_task, "uart_rx_task", 4 * 1024, dmx, 8, NULL,
           cfg->coreID);
     }
 
@@ -177,7 +169,15 @@ esp_err_t InitDMXchannel(sdmx_handle_t *dmx, sdmx_config_t *cfg)
 esp_err_t WriteDMX(sdmx_handle_t *dmx, uint8_t *data, uint16_t len)
 {
   xSemaphoreTake(dmx->sync_dmx, portMAX_DELAY);
-  memcpy(dmx->data + 1, data, len);
+  memcpy(dmx->data, data, len);
+  xSemaphoreGive(dmx->sync_dmx);
+  return ESP_OK;
+}
+
+esp_err_t ReadDMX(sdmx_handle_t *dmx, uint8_t *data, uint16_t len)
+{
+  xSemaphoreTake(dmx->sync_dmx, portMAX_DELAY);
+  memcpy(data, dmx->data, len);
   xSemaphoreGive(dmx->sync_dmx);
   return ESP_OK;
 }

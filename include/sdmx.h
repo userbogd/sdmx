@@ -40,8 +40,8 @@
 #include <stdint.h>
 
 #define DMX_BAUD 		250000
-#define DMX_PACKET_SIZE 513
-#define DMX_PACKET_RATE	500 
+#define DMX_PACKET_SIZE 512
+#define DMX_PACKET_RATE	30 
 #define DMX_BREAK_US 	100
 #define DMX_MAB_US		10
 #define DMX_START_BYTE  0x00
@@ -68,7 +68,9 @@ typedef struct
     uint8_t dc_pin;
     uint16_t circ_buff_size;
     enum DMX_Direction dmx_direction;
-	int coreID;
+	uint8_t coreID;
+	uint16_t packet_rate;
+	uint16_t packet_size;
 } sdmx_config_t;
 
 typedef struct
@@ -86,5 +88,6 @@ typedef struct
 
 esp_err_t InitDMXchannel(sdmx_handle_t *dmx, sdmx_config_t *cfg);
 esp_err_t WriteDMX(sdmx_handle_t *dmx, uint8_t *data, uint16_t len);
+esp_err_t ReadDMX(sdmx_handle_t *dmx, uint8_t *data, uint16_t len);
 
 #endif /* MAIN_DMX_DMX_H_ */
