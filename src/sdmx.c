@@ -26,6 +26,7 @@
 #include "esp_err.h"
 #include "esp_rom_sys.h"
 #include "esp_timer.h"
+#include <freertos/FreeRTOS.h>
 #include "freertos/portmacro.h"
 #include "freertos/projdefs.h"
 #include "hal/uart_types.h"
@@ -33,6 +34,9 @@
 #include <string.h>
 
 #define TAG "sDMX driver"
+
+
+//static const int SEND_DMX_BIT = BIT0;
 
 IRAM_ATTR static void uart_tx_task(void *arg)
 {
@@ -42,7 +46,8 @@ IRAM_ATTR static void uart_tx_task(void *arg)
   while (1)
     {
       vTaskDelay(pdMS_TO_TICKS(DMX_PACKET_RATE));
-      uart_wait_tx_done(dmx->cfg.uart, portMAX_DELAY);
+      
+	  uart_wait_tx_done(dmx->cfg.uart, portMAX_DELAY);
       uart_set_line_inverse(dmx->cfg.uart, UART_SIGNAL_TXD_INV);
       esp_rom_delay_us(DMX_BREAK_US);
       uart_set_line_inverse(dmx->cfg.uart, 0);
@@ -56,9 +61,10 @@ IRAM_ATTR static void uart_tx_task(void *arg)
 
 IRAM_ATTR static void on_packet_received(sdmx_handle_t *dmx)
 {
+  return;
   ESP_LOGI(TAG, "PACKET %02X%02X%02X-%02X OK at %d", dmx->data[0], dmx->data[1],
       dmx->data[2], dmx->data[511], (int)dmx->last_dmx_packet);
-  return;
+  
   xSemaphoreTake(dmx->sync_dmx, portMAX_DELAY);
   // for (int i = 0; i < 5; i++)
   //   printf("%02X", dmx->data[i]);
