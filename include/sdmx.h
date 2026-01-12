@@ -28,6 +28,7 @@
 #include "esp_log.h"
 #include "esp_system.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/idf_additions.h"
 #include "freertos/queue.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
@@ -81,6 +82,7 @@ typedef struct
     QueueHandle_t dmx_rx_queue;
     SemaphoreHandle_t sync_dmx;
 	esp_timer_handle_t tmr;
+    EventGroupHandle_t dmx_events_group;
     uint16_t rx_cntr;
 	uint8_t data[DMX_PACKET_SIZE];
     uint64_t last_dmx_packet;

@@ -27,6 +27,7 @@
 #include "esp_rom_sys.h"
 #include "esp_timer.h"
 #include <freertos/FreeRTOS.h>
+#include "freertos/idf_additions.h"
 #include "freertos/portmacro.h"
 #include "freertos/projdefs.h"
 #include "hal/uart_types.h"
@@ -35,8 +36,7 @@
 
 #define TAG "sDMX driver"
 
-
-//static const int SEND_DMX_BIT = BIT0;
+static const int SEND_DMX_BIT = BIT0;
 
 IRAM_ATTR static void uart_tx_task(void *arg)
 {
@@ -45,9 +45,9 @@ IRAM_ATTR static void uart_tx_task(void *arg)
   uint8_t start_byte = DMX_START_BYTE;
   while (1)
     {
-      vTaskDelay(pdMS_TO_TICKS(DMX_PACKET_RATE));
-      
-	  uart_wait_tx_done(dmx->cfg.uart, portMAX_DELAY);
+      xEventGroupWaitBits(dmx->dmx_events_group, SEND_DMX_BIT, pdTRUE, pdTRUE,
+          portMAX_DELAY);
+      uart_wait_tx_done(dmx->cfg.uart, portMAX_DELAY);
       uart_set_line_inverse(dmx->cfg.uart, UART_SIGNAL_TXD_INV);
       esp_rom_delay_us(DMX_BREAK_US);
       uart_set_line_inverse(dmx->cfg.uart, 0);
@@ -64,7 +64,7 @@ IRAM_ATTR static void on_packet_received(sdmx_handle_t *dmx)
   return;
   ESP_LOGI(TAG, "PACKET %02X%02X%02X-%02X OK at %d", dmx->data[0], dmx->data[1],
       dmx->data[2], dmx->data[511], (int)dmx->last_dmx_packet);
-  
+
   xSemaphoreTake(dmx->sync_dmx, portMAX_DELAY);
   // for (int i = 0; i < 5; i++)
   //   printf("%02X", dmx->data[i]);
@@ -152,6 +152,7 @@ esp_err_t InitDMXchannel(sdmx_handle_t *dmx, sdmx_config_t *cfg)
       uart_set_pin(cfg->uart, cfg->tx_pin, cfg->rx_pin, cfg->dc_pin, UART_PIN_NO_CHANGE));
 
   dmx->sync_dmx = xSemaphoreCreateMutex();
+  dmx->dmx_events_group = xEventGroupCreate();
 
   gpio_pad_select_gpio(cfg->dc_pin);
   gpio_set_direction(cfg->dc_pin, GPIO_MODE_OUTPUT);
@@ -176,6 +177,7 @@ esp_err_t WriteDMX(sdmx_handle_t *dmx, uint8_t *data, uint16_t len)
 {
   xSemaphoreTake(dmx->sync_dmx, portMAX_DELAY);
   memcpy(dmx->data, data, len);
+  xEventGroupSetBits(dmx->dmx_events_group, SEND_DMX_BIT);
   xSemaphoreGive(dmx->sync_dmx);
   return ESP_OK;
 }
