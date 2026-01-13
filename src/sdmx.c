@@ -59,8 +59,10 @@ IRAM_ATTR static void uart_tx_task(void *arg)
     }
 }
 
+/*
 IRAM_ATTR static void on_packet_received(sdmx_handle_t *dmx)
 {
+  xEventGroupSetBits(dmx->dmx_events_group, SEND_DMX_BIT);
   return;
   ESP_LOGI(TAG, "PACKET %02X%02X%02X-%02X OK at %d", dmx->data[0], dmx->data[1],
       dmx->data[2], dmx->data[511], (int)dmx->last_dmx_packet);
@@ -73,6 +75,7 @@ IRAM_ATTR static void on_packet_received(sdmx_handle_t *dmx)
   printf("\r\n");
   return;
 }
+*/
 
 IRAM_ATTR void uart_rx_task(void *arg)
 {
@@ -97,7 +100,8 @@ IRAM_ATTR void uart_rx_task(void *arg)
                     xSemaphoreTake(dmx->sync_dmx, portMAX_DELAY);
                     memcpy(dmx->data, &tmp2[2], sizeof(dmx->data));
                     xSemaphoreGive(dmx->sync_dmx);
-                    on_packet_received(dmx);
+                    //on_packet_received(dmx);
+					xEventGroupSetBits(dmx->dmx_events_group, SEND_DMX_BIT);
                     if (tmp1[1] == 0)
                       {
                         dmx->state = DMX_DATA;
@@ -184,6 +188,7 @@ esp_err_t WriteDMX(sdmx_handle_t *dmx, uint8_t *data, uint16_t len)
 
 esp_err_t ReadDMX(sdmx_handle_t *dmx, uint8_t *data, uint16_t len)
 {
+  xEventGroupWaitBits(dmx->dmx_events_group, SEND_DMX_BIT, pdTRUE, pdTRUE, portMAX_DELAY);
   xSemaphoreTake(dmx->sync_dmx, portMAX_DELAY);
   memcpy(data, dmx->data, len);
   xSemaphoreGive(dmx->sync_dmx);
