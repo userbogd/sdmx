@@ -37,6 +37,7 @@
 #define TAG "sDMX driver"
 
 static const int SEND_DMX_BIT = BIT0;
+static const int READ_DMX_BIT = BIT1;
 
 IRAM_ATTR static void uart_tx_task(void *arg)
 {
@@ -45,7 +46,7 @@ IRAM_ATTR static void uart_tx_task(void *arg)
   uint8_t start_byte = DMX_START_BYTE;
   while (1)
     {
-      xEventGroupWaitBits(dmx->dmx_events_group, SEND_DMX_BIT, pdTRUE, pdTRUE,
+      xEventGroupWaitBits(dmx->dmx_events_group, SEND_DMX_BIT, pdTRUE, pdFALSE,
           portMAX_DELAY);
       uart_wait_tx_done(dmx->cfg.uart, portMAX_DELAY);
       uart_set_line_inverse(dmx->cfg.uart, UART_SIGNAL_TXD_INV);
@@ -58,24 +59,6 @@ IRAM_ATTR static void uart_tx_task(void *arg)
       xSemaphoreGive(dmx->sync_dmx);
     }
 }
-
-/*
-IRAM_ATTR static void on_packet_received(sdmx_handle_t *dmx)
-{
-  xEventGroupSetBits(dmx->dmx_events_group, SEND_DMX_BIT);
-  return;
-  ESP_LOGI(TAG, "PACKET %02X%02X%02X-%02X OK at %d", dmx->data[0], dmx->data[1],
-      dmx->data[2], dmx->data[511], (int)dmx->last_dmx_packet);
-
-  xSemaphoreTake(dmx->sync_dmx, portMAX_DELAY);
-  // for (int i = 0; i < 5; i++)
-  //   printf("%02X", dmx->data[i]);
-  printf("%02X%02X%02X-%02X", dmx->data[0], dmx->data[1], dmx->data[2], dmx->data[511]);
-  xSemaphoreGive(dmx->sync_dmx);
-  printf("\r\n");
-  return;
-}
-*/
 
 IRAM_ATTR void uart_rx_task(void *arg)
 {
@@ -100,8 +83,8 @@ IRAM_ATTR void uart_rx_task(void *arg)
                     xSemaphoreTake(dmx->sync_dmx, portMAX_DELAY);
                     memcpy(dmx->data, &tmp2[2], sizeof(dmx->data));
                     xSemaphoreGive(dmx->sync_dmx);
-                    //on_packet_received(dmx);
-					xEventGroupSetBits(dmx->dmx_events_group, SEND_DMX_BIT);
+                    // on_packet_received(dmx);
+                    xEventGroupSetBits(dmx->dmx_events_group, READ_DMX_BIT);
                     if (tmp1[1] == 0)
                       {
                         dmx->state = DMX_DATA;
@@ -188,9 +171,19 @@ esp_err_t WriteDMX(sdmx_handle_t *dmx, uint8_t *data, uint16_t len)
 
 esp_err_t ReadDMX(sdmx_handle_t *dmx, uint8_t *data, uint16_t len)
 {
-  xEventGroupWaitBits(dmx->dmx_events_group, SEND_DMX_BIT, pdTRUE, pdTRUE, portMAX_DELAY);
   xSemaphoreTake(dmx->sync_dmx, portMAX_DELAY);
   memcpy(data, dmx->data, len);
   xSemaphoreGive(dmx->sync_dmx);
   return ESP_OK;
+}
+
+esp_err_t PacketReady(sdmx_handle_t *dmx)
+{
+  EventBits_t uxBits;
+  uxBits = xEventGroupWaitBits(dmx->dmx_events_group, READ_DMX_BIT, pdTRUE, pdFALSE,
+      pdMS_TO_TICKS(1000));
+  if (uxBits & READ_DMX_BIT)
+    return ESP_OK;
+  else
+    return ESP_ERR_NOT_FINISHED;
 }

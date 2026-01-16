@@ -92,5 +92,6 @@ typedef struct
 esp_err_t InitDMXchannel(sdmx_handle_t *dmx, sdmx_config_t *cfg);
 esp_err_t WriteDMX(sdmx_handle_t *dmx, uint8_t *data, uint16_t len);
 esp_err_t ReadDMX(sdmx_handle_t *dmx, uint8_t *data, uint16_t len);
+esp_err_t PacketReady(sdmx_handle_t *dmx);
 
 #endif /* MAIN_DMX_DMX_H_ */
