@@ -38,6 +38,7 @@
 
 static const int SEND_DMX_BIT = BIT0;
 static const int READ_DMX_BIT = BIT1;
+static const int SENT_DMX_BIT = BIT3;
 
 IRAM_ATTR static void uart_tx_task(void *arg)
 {
@@ -57,6 +58,7 @@ IRAM_ATTR static void uart_tx_task(void *arg)
       uart_write_bytes(dmx->cfg.uart, (const char *)&start_byte, 1);
       uart_write_bytes(dmx->cfg.uart, (const char *)dmx->data, DMX_PACKET_SIZE);
       xSemaphoreGive(dmx->sync_dmx);
+      xEventGroupSetBits(dmx->dmx_events_group, SENT_DMX_BIT);
     }
 }
 
@@ -187,3 +189,16 @@ esp_err_t PacketReady(sdmx_handle_t *dmx)
   else
     return ESP_ERR_NOT_FINISHED;
 }
+
+esp_err_t PacketSent(sdmx_handle_t *dmx)
+{
+  EventBits_t uxBits;
+  uxBits = xEventGroupWaitBits(dmx->dmx_events_group, SENT_DMX_BIT, pdTRUE, pdFALSE,
+      pdMS_TO_TICKS(1000));
+  if (uxBits & SENT_DMX_BIT)
+    return ESP_OK;
+  else
+    return ESP_ERR_NOT_FINISHED;
+}
+
+
