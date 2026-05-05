@@ -54,6 +54,13 @@ enum DMX_Direction
     output
 };
 
+enum DMX_Mode
+{
+    normal,
+    progr,
+    off
+};
+
 enum DMX_State {
 	DMX_IDLE,
 	DMX_BREAK,
@@ -70,6 +77,7 @@ typedef struct
     uint8_t dc_pin;
     uint16_t circ_buff_size;
     enum DMX_Direction dmx_direction;
+    enum DMX_Mode dmx_mode;
 	uint8_t coreID;
 	uint16_t packet_rate;
 	uint16_t packet_size;
@@ -94,5 +102,5 @@ esp_err_t WriteDMX(sdmx_handle_t *dmx, uint8_t *data, uint16_t len);
 esp_err_t ReadDMX(sdmx_handle_t *dmx, uint8_t *data, uint16_t len);
 esp_err_t PacketReady(sdmx_handle_t *dmx);
 esp_err_t PacketSent(sdmx_handle_t *dmx);
-
+esp_err_t StartProg(sdmx_handle_t *dmx);
 #endif /* MAIN_DMX_DMX_H_ */
