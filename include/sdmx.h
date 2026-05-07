@@ -27,73 +27,59 @@
 #include "esp_err.h"
 #include "esp_log.h"
 #include "esp_system.h"
+#include <esp_timer.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/idf_additions.h"
 #include "freertos/queue.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "hal/uart_types.h"
-#include <esp_timer.h>
 
-
-#include <driver/uart.h>
 #include <driver/gpio.h>
+#include <driver/uart.h>
 #include <rom/gpio.h>
 #include <stdint.h>
 
-#define DMX_BAUD 		250000
+#define DMX_BAUD 250000
 #define DMX_PACKET_SIZE 512
-#define DMX_PACKET_RATE	30 
-#define DMX_BREAK_US 	100
-#define DMX_MAB_US		10
-#define DMX_START_BYTE  0x00
+#define DMX_PACKET_RATE 30
+#define DMX_BREAK_US 100
+#define DMX_MAB_US 10
+#define DMX_START_BYTE 0x00
 
-enum DMX_Direction
-{
-    input,
-    output
-};
+#define DMX_UTIL_DATA_LENGTH 10
 
-enum DMX_Mode
-{
-    normal,
-    progr,
-    off
-};
+typedef enum { DMX_DIRECT_INPUT, DMX_DIRECT_OUTPUT } dmx_direct_t;
+typedef enum { DMX_UTIL_MODE_NORMAL, DMX_UTIL_MODE_PROG, DMX_UTIL_MODE_REFLECT, DMX_UTIL_MODE_MAX } dmx_util_mode_t;
+typedef enum { DMX_IDLE, DMX_BREAK, DMX_DATA, DMX_ERROR } dmx_state_t;
+typedef enum {DMX_UTIL_PROG_ADDRESS, DMX_UTIL_PROG_PARAMS ,DMX_UTIL_PROG_GAIN, DMX_UTIL_PROG_AUTOMATIC} dmx_util_prog_command_t;
 
-enum DMX_State {
-	DMX_IDLE,
-	DMX_BREAK,
-	DMX_DATA,
-	DMX_ERROR	
-};
 
-typedef struct
-{
+typedef struct {
     uint8_t idx;
     uart_port_t uart;
     uint8_t tx_pin;
     uint8_t rx_pin;
     uint8_t dc_pin;
     uint16_t circ_buff_size;
-    enum DMX_Direction dmx_direction;
-    enum DMX_Mode dmx_mode;
-	uint8_t coreID;
-	uint16_t packet_rate;
-	uint16_t packet_size;
+    uint8_t coreID;
+    uint16_t packet_rate;
+    uint16_t packet_size;
+    dmx_direct_t dmx_direction;
 } sdmx_config_t;
 
-typedef struct
-{
+typedef struct {
     sdmx_config_t cfg;
-	enum DMX_State state;
+    dmx_state_t state;
     QueueHandle_t dmx_rx_queue;
     SemaphoreHandle_t sync_dmx;
-	esp_timer_handle_t tmr;
+    esp_timer_handle_t tmr;
     EventGroupHandle_t dmx_events_group;
     uint16_t rx_cntr;
-	uint8_t data[DMX_PACKET_SIZE];
+    uint8_t data[DMX_PACKET_SIZE];
     uint64_t last_dmx_packet;
+    dmx_util_mode_t dmx_mode;
+    uint8_t dmx_util_data[DMX_UTIL_DATA_LENGTH];
 
 } sdmx_handle_t;
 
@@ -103,4 +89,5 @@ esp_err_t ReadDMX(sdmx_handle_t *dmx, uint8_t *data, uint16_t len);
 esp_err_t PacketReady(sdmx_handle_t *dmx);
 esp_err_t PacketSent(sdmx_handle_t *dmx);
 esp_err_t StartProg(sdmx_handle_t *dmx);
+
 #endif /* MAIN_DMX_DMX_H_ */
