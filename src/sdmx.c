@@ -125,7 +125,7 @@ IRAM_ATTR static void uart_tx_task(void *arg)
                     uint16_t channels = dmx->dmx_util_data[3] * 256 + dmx->dmx_util_data[4];
                     uint16_t dev_num = dmx->dmx_util_data[5] * 256 + dmx->dmx_util_data[6];
                     for (int i = 0; i < dev_num; i++) {
-                        int curaddr = (dmx->dmx_util_data[7] == 0x01) ? start_addr + channels * i : start_addr;
+                        int curaddr = (dmx->dmx_util_data[7] == 0x00) ? start_addr + channels * i : start_addr;
                         uint8_t high_addr = (uint8_t)(curaddr >> 8) & 0xF;
                         high_addr = bit_reverse_table[high_addr];
                         data[0] = 0x00;
@@ -149,6 +149,7 @@ IRAM_ATTR static void uart_tx_task(void *arg)
                     data[2] = bit_reverse_table[dmx->dmx_util_data[3]];
                     data[3] = bit_reverse_table[dmx->dmx_util_data[4]];
                     data[4] = bit_reverse_table[dmx->dmx_util_data[5]];
+                    
                     data[5] = dmx->dmx_util_data[6];
                     data[6] = dmx->dmx_util_data[7];
 
@@ -279,7 +280,7 @@ esp_err_t InitDMXchannel(sdmx_handle_t *dmx, sdmx_config_t *cfg)
     gpio_pad_select_gpio(cfg->dc_pin);
     gpio_set_direction(cfg->dc_pin, GPIO_MODE_OUTPUT);
     dmx->state = DMX_IDLE;
-    dmx->dmx_mode = DMX_UTIL_MODE_PROG;
+    dmx->dmx_mode = DMX_UTIL_MODE_NORMAL;
     if (dmx->cfg.dmx_direction == DMX_DIRECT_OUTPUT) {
         gpio_set_level(cfg->dc_pin, 1);
         xTaskCreatePinnedToCore(uart_tx_task, "uart_tx_task", 4 * 1024, dmx, 8, NULL, cfg->coreID);
