@@ -283,10 +283,10 @@ esp_err_t InitDMXchannel(sdmx_handle_t *dmx, sdmx_config_t *cfg)
     dmx->dmx_mode = DMX_UTIL_MODE_NORMAL;
     if (dmx->cfg.dmx_direction == DMX_DIRECT_OUTPUT) {
         gpio_set_level(cfg->dc_pin, 1);
-        xTaskCreatePinnedToCore(uart_tx_task, "uart_tx_task", 4 * 1024, dmx, 8, NULL, cfg->coreID);
+        xTaskCreatePinnedToCore(uart_tx_task, "uart_tx_task", 4 * 1024, dmx, 24, NULL, cfg->coreID);
     } else {
         gpio_set_level(cfg->dc_pin, 0);
-        xTaskCreatePinnedToCore(uart_rx_task, "uart_rx_task", 4 * 1024, dmx, 8, NULL, cfg->coreID);
+        xTaskCreatePinnedToCore(uart_rx_task, "uart_rx_task", 4 * 1024, dmx, 24, NULL, cfg->coreID);
     }
 
     return ESP_OK;
